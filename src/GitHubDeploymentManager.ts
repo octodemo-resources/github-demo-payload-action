@@ -1,3 +1,4 @@
+import * as core from '@actions/core';
 import { Octokit } from '@octokit/rest';
 import { DemoDeployment, GitHubDeploymentData, GitHubDeploymentValidator } from './DemoDeployment.js';
 import { DEMO_DEPLOYMENT_TASK, DEMO_STATES } from './constants.js';
@@ -103,11 +104,13 @@ export class GitHubDeploymentManager {
   }
 
   getAllDemoDeployments(): Promise<DemoDeployment[] | undefined> {
+    core.info(`Fetching deployments for ${this.repo.owner}/${this.repo.repo}`);
     return this.github.paginate('GET /repos/{owner}/{repo}/deployments', {
         ...this.repo,
         task: DEMO_DEPLOYMENT_TASK,
         per_page: 100
       }).then(deployments => {
+        core.info(`Found ${deployments.length} deployments.`);
         return this.extractDemoDeploymentsFromResponse(deployments)
       });
   }
@@ -299,6 +302,7 @@ export class GitHubDeploymentManager {
 async function generateDemoDeployment(deployment: GitHubDeploymentData, manager: GitHubDeploymentManager): Promise<DemoDeployment> {
   //TODO could use Vine definition here to validate the payload
   try {
+    core.info(`Fetching deployment ${deployment.id}...`);
     const payload = await GitHubDeploymentValidator.validate(deployment);
     return new DemoDeployment(payload, manager);
   } catch (err: any) {
