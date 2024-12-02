@@ -38947,10 +38947,14 @@ class DemoDeploymentReview {
             }
             else {
                 const daysInState = review.days_in_state;
-                if (daysInState > warningDays && review.lifecycle_state !== DEMO_STATES.marked_warning) {
+                if (daysInState > warningDays
+                    && review.lifecycle_state !== DEMO_STATES.marked_warning
+                    // If this demo is already marked for terminiation, no need to warn again
+                    && review.lifecycle_state !== DEMO_STATES.marked_termination) {
                     results.to_warn.push(review);
                 }
-                if (daysInState > maxActiveDays && review.lifecycle_state !== DEMO_STATES.marked_termination) {
+                if (daysInState > maxActiveDays
+                    && review.lifecycle_state !== DEMO_STATES.marked_termination) {
                     results.to_terminate.push(review);
                 }
             }
