@@ -48,7 +48,7 @@ export function getRepository() {
   let repoName = process.env['GITHUB_REPO_NAME'];
 
   return {
-    owner: repoOwner || 'peter-murray',
+    owner: repoOwner || 'octodemo-resources',
     repo: repoName || 'github-demo-payload-action',
   };
 }
