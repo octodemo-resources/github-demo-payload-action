@@ -1,9 +1,9 @@
 import { Octokit } from "@octokit/rest";
 import { DEMO_STATES } from "./constants.js";
+import { Repository } from './demo-payload/TypeValidations.js';
 import { DemoDeployment } from "./DemoDeployment.js";
 import { GitHubDeploymentManager } from "./GitHubDeploymentManager.js";
 import { DeploymentState, DeploymentStatus } from "./types.js";
-import { Repository } from './demo-payload/TypeValidations.js';
 
 export type DemoReview = {
   demo: DemoDeployment,
@@ -136,7 +136,7 @@ export class DemoDeploymentReview {
   }
 
   private async load(): Promise<DemoDeployment[]> {
-    if (! this.loaded) {
+    if (!this.loaded) {
       this.allDemos = await this.deploymentManager.getAllDemoDeployments();
       this.loaded = true;
     }
