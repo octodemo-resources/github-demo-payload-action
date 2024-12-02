@@ -1,9 +1,9 @@
 import { Octokit } from '@octokit/rest';
-import { describe, it, expect, beforeAll } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 // import { expect } from 'chai';
-import { AnalysisResults, DemoDeploymentReview } from './DemoDeploymentReview';
-import { Repository } from './types';
-import { getOctokit, getRepository } from './util';
+import { AnalysisResults, DemoDeploymentReview } from '../../src/DemoDeploymentReview';
+import { Repository } from '../../src/types';
+import { getOctokit, getRepository } from '../../src/util';
 
 describe('DeploymentManager', () => {
 
