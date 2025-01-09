@@ -13,10 +13,16 @@ export class GitHubDeploymentManager {
 
   private readonly ref: string;
 
+  private issueLabelCache: Map<number, string[]>;
+
+  private isLabelCacheInitialized: boolean;
+
   constructor(repo: Repository, github: Octokit, ref?: string) {
     this.repo = repo;
     this.github = github;
     this.ref = ref || 'main';
+    this.issueLabelCache = new Map();
+    this.isLabelCacheInitialized = false;
   }
 
   getDemoDeploymentForUUID(uuid: string): Promise<DemoDeployment | undefined> {
@@ -220,20 +226,23 @@ export class GitHubDeploymentManager {
       });
   }
 
-  getIssueLabels(issueId: number): Promise<string[]> {
-    core.info(`Listing labels for issue ${issueId}`);
-    return this.github.rest.issues.listLabelsOnIssue({
-      ...this.repo,
-      issue_number: issueId,
-      per_page: 100,
-      headers: {
-        'X-GitHub-Api-Version': '2022-11-28'
-      }
-    }).then(resp => {
-      return resp.data.map(label => label.name);
-    }).catch(() => {
-      return [];
-    })
+  async getIssueLabels(issueId: number, useCache: boolean = true): Promise<string[]> {
+    if (!useCache) {
+      return this.fetchLabelsForIssue(issueId);
+    }
+
+    if (!this.isLabelCacheInitialized) {
+      await this.initializeLabelCache();
+    }
+
+    const cachedLabels: string[] | undefined = this.issueLabelCache?.get(issueId);
+    if (cachedLabels !== undefined) {
+      core.debug(`Cache hit for issue ${issueId}`);
+      return cachedLabels;
+    }
+
+    core.debug(`Cache miss for issue ${issueId}`);
+    return this.fetchLabelsForIssue(issueId);
   }
 
   addIssueLabels(issueId: number, ...label: string[]): Promise<boolean> {
@@ -300,6 +309,72 @@ export class GitHubDeploymentManager {
     });
   }
 
+  async fetchLabelsForIssue(issueId: number): Promise<string[]> {
+    core.info(`Fetching labels for issue ${issueId}`);
+    return this.github.rest.issues.listLabelsOnIssue({
+      ...this.repo,
+      issue_number: issueId,
+      per_page: 100,
+      headers: {
+        'X-GitHub-Api-Version': '2022-11-28'
+      }
+    }).then(resp => {
+      return resp.data.map(label => label.name);
+    }).catch(() => {
+      return [];
+    })
+  }
+
+  async fetchLabelsForAllIssues(
+    state: 'open' | 'closed' | 'all' = 'open',
+    repo: Repository = this.repo
+  ): Promise<Map<number, string[]>> {
+    const labelMap = new Map<number, string[]>();
+
+    try {
+      const issues = await this.github.paginate('GET /repos/{owner}/{repo}/issues', {
+        ...repo,
+        state,
+        per_page: 100,
+        headers: {
+          'X-GitHub-Api-Version': '2022-11-28'
+        }
+      });
+
+      issues.forEach(issue => {
+        if (issue.labels) {
+          labelMap.set(
+            issue.number,
+            Array.isArray(issue.labels)
+              ? issue.labels.map((label: { name: string }) => label.name)
+              : []
+          );
+        }
+      });
+
+      core.info(`Fetched labels for ${labelMap.size} ${state} issues`);
+      return labelMap;
+    } catch (error) {
+      core.warning(`Failed to fetch issue labels: ${error}`);
+      return new Map<number, string[]>();
+    }
+  }
+
+  private async initializeLabelCache(
+    state: 'open' | 'closed' | 'all' = 'open',
+    repo: Repository = this.repo
+  ): Promise<void> {
+    try {
+      this.issueLabelCache = await this.fetchLabelsForAllIssues(state, repo);
+      this.isLabelCacheInitialized = true;
+      core.info(`Initialized label cache with ${this.issueLabelCache.size} ${state} issues`);
+    } catch (error) {
+      core.warning(`Failed to initialize label cache: ${error}`);
+      this.issueLabelCache = new Map();
+      this.isLabelCacheInitialized = false;
+    }
+  }
+
   private async extractDemoDeploymentsFromResponse(resp: any[]): Promise<DemoDeployment[] | undefined> {
     const manager = this;
 
@@ -309,6 +384,7 @@ export class GitHubDeploymentManager {
     }
     return undefined;
   }
+
 }
 
 async function generateDemoDeployment(deployment: GitHubDeploymentData, manager: GitHubDeploymentManager): Promise<DemoDeployment> {
