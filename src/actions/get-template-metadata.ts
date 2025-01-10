@@ -35,6 +35,7 @@ async function exec() {
   setOutput(`template_variant`, metadata.variant);
   setOutput(`templated_files`, metadata.framework.templated_files ? JSON.stringify(metadata.framework.templated_files) : []);
   setOutput(`has_templated_files`, metadata.framework.templated_files ? metadata.framework.templated_files.length > 0 : false);
+  setOutput(`resources`, JSON.stringify(metadata.resources));
 
   if (metadata.terraformMetadata) {
     setOutput(`tf_metadata_json`, JSON.stringify(metadata.terraformMetadata));
