@@ -34,6 +34,7 @@ describe('DemoMetadata', () => {
 
       expect(result.name).toBe(payload.name);
       expect(result.version).toBe(1);
+      expect(result.resources).toEqual(payload.resources);
     });
 
     it ('should validate a repository template definition with templated files', async () => {
@@ -69,6 +70,7 @@ describe('DemoMetadata', () => {
 
       expect(result.name).toBe(payload.name);
       expect(result.version).toBe(1);
+      expect(result.resources).toEqual(payload.resources);
 
       expect(result.framework.templated_files).toEqual(payload.framework.templated_files);
     });
