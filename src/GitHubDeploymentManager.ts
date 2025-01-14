@@ -1,9 +1,9 @@
 import * as core from '@actions/core';
 import { Octokit } from '@octokit/rest';
 import { DemoDeployment, GitHubDeploymentData, GitHubDeploymentValidator } from './DemoDeployment.js';
-import { DEMO_DEPLOYMENT_TASK, DEMO_STATES } from './constants.js';
+import { DEMO_DEPLOYMENT_TASK, DEMO_STATES, ISSUE_STATES } from './constants.js';
 import { DemoPayload } from './demo-payload/DemoPayload.js';
-import { DeploymentState, DeploymentStatus, Repository } from './types.js';
+import { DeploymentState, DeploymentStatus, GitHubLabel, Repository } from './types.js';
 
 export class GitHubDeploymentManager {
 
@@ -325,14 +325,14 @@ export class GitHubDeploymentManager {
     })
   }
 
-  async fetchLabelsForAllIssues(
-    state: 'open' | 'closed' | 'all' = 'open',
+  async fetchLabelsForRepo(
+    state: keyof typeof ISSUE_STATES = ISSUE_STATES.open,
     repo: Repository = this.repo
   ): Promise<Map<number, string[]>> {
     const labelMap = new Map<number, string[]>();
 
     try {
-      const issues = await this.github.paginate('GET /repos/{owner}/{repo}/issues', {
+      const issues = await this.github.paginate(this.github.rest.issues.listForRepo, {
         ...repo,
         state,
         per_page: 100,
@@ -346,7 +346,11 @@ export class GitHubDeploymentManager {
           labelMap.set(
             issue.number,
             Array.isArray(issue.labels)
-              ? issue.labels.map((label: { name: string }) => label.name)
+              ? issue.labels.map((label: string | GitHubLabel) => {
+                  if (typeof label === 'string') return label;
+                  if (!label || typeof label.name !== 'string') return '';
+                  return label.name;
+                }).filter((name): name is string => name !== '')
               : []
           );
         }
@@ -361,11 +365,15 @@ export class GitHubDeploymentManager {
   }
 
   private async initializeLabelCache(
-    state: 'open' | 'closed' | 'all' = 'open',
+    state: keyof typeof ISSUE_STATES = ISSUE_STATES.open,
     repo: Repository = this.repo
   ): Promise<void> {
     try {
-      this.issueLabelCache = await this.fetchLabelsForAllIssues(state, repo);
+      this.issueLabelCache = await this.fetchLabelsForRepo(state, repo);
+
+      core.debug('Label cache contents:');
+      core.debug(JSON.stringify(Object.fromEntries(this.issueLabelCache), null, 2));
+
       this.isLabelCacheInitialized = true;
       core.info(`Initialized label cache with ${this.issueLabelCache.size} ${state} issues`);
     } catch (error) {
@@ -384,7 +392,6 @@ export class GitHubDeploymentManager {
     }
     return undefined;
   }
-
 }
 
 async function generateDemoDeployment(deployment: GitHubDeploymentData, manager: GitHubDeploymentManager): Promise<DemoDeployment> {

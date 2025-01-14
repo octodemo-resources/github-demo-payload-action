@@ -20,3 +20,9 @@ export const LIFECYCLE_STATES = {
   termination: 'terminate',
   unhold: 'unhold',
 }
+
+export const ISSUE_STATES = {
+  open: 'open',
+  closed: 'closed',
+  all: 'all',
+} as const;
