@@ -1,5 +1,5 @@
 import * as core from '@actions/core';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMocktokit } from '../test/moctokit/Mocktokit.js';
 import { GitHubDeploymentManager } from './GitHubDeploymentManager.js';
 import { createMockLabel, createMockResponse } from '../test/moctokit/LabelMockFactory.js';
@@ -12,8 +12,11 @@ describe('GitHubDeploymentManager', () => {
   let manager: GitHubDeploymentManager;
 
   beforeEach(() => {
-    vi.clearAllMocks();
     manager = new GitHubDeploymentManager(repo, moctokit);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
   });
 
   describe('fetchLabelsForRepo', () => {

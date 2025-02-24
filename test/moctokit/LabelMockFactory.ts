@@ -1,7 +1,5 @@
-import { Endpoints } from '@octokit/types';
 import { OctokitResponse } from '@octokit/types';
-
-type GitHubLabel = Endpoints["GET /repos/{owner}/{repo}/labels"]["response"]["data"][0];
+import { GitHubLabel } from '../../src/types.js';
 
 const DefaultLabel: GitHubLabel = {
   "id": 208045946,
@@ -28,5 +26,3 @@ export function createMockResponse<T>(data: T): OctokitResponse<T, 200> {
     url: 'https://api.github.com/mock'
   };
 }
-
-export type { GitHubLabel };

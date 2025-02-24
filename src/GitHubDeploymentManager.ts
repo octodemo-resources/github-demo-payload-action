@@ -1,9 +1,9 @@
 import * as core from '@actions/core';
 import { Octokit } from '@octokit/rest';
 import { DemoDeployment, GitHubDeploymentData, GitHubDeploymentValidator } from './DemoDeployment.js';
-import { DEMO_DEPLOYMENT_TASK, DEMO_STATES, ISSUE_STATES } from './constants.js';
+import { DEMO_DEPLOYMENT_TASK, DEMO_STATES } from './constants.js';
 import { DemoPayload } from './demo-payload/DemoPayload.js';
-import { DeploymentState, DeploymentStatus, GitHubLabel, Repository } from './types.js';
+import { DeploymentState, DeploymentStatus, GitHubLabel, IssueState, Repository } from './types.js';
 
 export class GitHubDeploymentManager {
 
@@ -326,7 +326,7 @@ export class GitHubDeploymentManager {
   }
 
   async fetchLabelsForRepo(
-    state: keyof typeof ISSUE_STATES = ISSUE_STATES.open,
+    state: IssueState = 'open',
     repo: Repository = this.repo
   ): Promise<Map<number, string[]>> {
     const labelMap = new Map<number, string[]>();
@@ -346,11 +346,12 @@ export class GitHubDeploymentManager {
           labelMap.set(
             issue.number,
             Array.isArray(issue.labels)
-              ? issue.labels.map((label: string | GitHubLabel) => {
-                  if (typeof label === 'string') return label;
-                  if (!label || typeof label.name !== 'string') return '';
-                  return label.name;
-                }).filter((name): name is string => name !== '')
+              ? issue.labels
+                  .map((label: GitHubLabel) => {
+                    if (typeof label === 'string') return label;
+                    return label?.name;
+                  })
+                  .filter((name): name is string => Boolean(name))
               : []
           );
         }
@@ -365,7 +366,7 @@ export class GitHubDeploymentManager {
   }
 
   private async initializeLabelCache(
-    state: keyof typeof ISSUE_STATES = ISSUE_STATES.open,
+    state: IssueState = 'open',
     repo: Repository = this.repo
   ): Promise<void> {
     try {
