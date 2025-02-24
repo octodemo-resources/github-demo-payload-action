@@ -33070,11 +33070,6 @@ const LIFECYCLE_STATES = {
     termination: 'terminate',
     unhold: 'unhold',
 };
-const ISSUE_STATES = {
-    open: 'open',
-    closed: 'closed',
-    all: 'all',
-};
 //# sourceMappingURL=constants.js.map
 ;// CONCATENATED MODULE: ./node_modules/@vinejs/vine/build/chunk-577THMJC.js
 // src/defaults.ts
@@ -38919,7 +38914,7 @@ class GitHubDeploymentManager {
             return [];
         });
     }
-    async fetchLabelsForRepo(state = ISSUE_STATES.open, repo = this.repo) {
+    async fetchLabelsForRepo(state = 'open', repo = this.repo) {
         const labelMap = new Map();
         try {
             const issues = await this.github.paginate(this.github.rest.issues.listForRepo, {
@@ -38933,13 +38928,13 @@ class GitHubDeploymentManager {
             issues.forEach(issue => {
                 if (issue.labels) {
                     labelMap.set(issue.number, Array.isArray(issue.labels)
-                        ? issue.labels.map((label) => {
+                        ? issue.labels
+                            .map((label) => {
                             if (typeof label === 'string')
                                 return label;
-                            if (!label || typeof label.name !== 'string')
-                                return '';
-                            return label.name;
-                        }).filter((name) => name !== '')
+                            return label?.name;
+                        })
+                            .filter((name) => Boolean(name))
                         : []);
                 }
             });
@@ -38951,7 +38946,7 @@ class GitHubDeploymentManager {
             return new Map();
         }
     }
-    async initializeLabelCache(state = ISSUE_STATES.open, repo = this.repo) {
+    async initializeLabelCache(state = 'open', repo = this.repo) {
         try {
             this.issueLabelCache = await this.fetchLabelsForRepo(state, repo);
             lib_core.debug('Label cache contents:');
