@@ -38605,10 +38605,14 @@ class GitHubDeploymentManager {
     github;
     repo;
     ref;
+    issueLabelCache;
+    isLabelCacheInitialized;
     constructor(repo, github, ref) {
         this.repo = repo;
         this.github = github;
         this.ref = ref || 'main';
+        this.issueLabelCache = new Map();
+        this.isLabelCacheInitialized = false;
     }
     getDemoDeploymentForUUID(uuid) {
         return this.getAllDemoDeployments()
@@ -38794,20 +38798,20 @@ class GitHubDeploymentManager {
             return createDeploymentStatus(resp.data);
         });
     }
-    getIssueLabels(issueId) {
-        lib_core.info(`Listing labels for issue ${issueId}`);
-        return this.github.rest.issues.listLabelsOnIssue({
-            ...this.repo,
-            issue_number: issueId,
-            per_page: 100,
-            headers: {
-                'X-GitHub-Api-Version': '2022-11-28'
-            }
-        }).then(resp => {
-            return resp.data.map(label => label.name);
-        }).catch(() => {
-            return [];
-        });
+    async getIssueLabels(issueId, useCache = true) {
+        if (!useCache) {
+            return this.fetchLabelsForIssue(issueId);
+        }
+        if (!this.isLabelCacheInitialized) {
+            await this.initializeLabelCache();
+        }
+        const cachedLabels = this.issueLabelCache?.get(issueId);
+        if (cachedLabels !== undefined) {
+            lib_core.debug(`Cache hit for issue ${issueId}`);
+            return cachedLabels;
+        }
+        lib_core.debug(`Cache miss for issue ${issueId}`);
+        return this.fetchLabelsForIssue(issueId);
     }
     addIssueLabels(issueId, ...label) {
         lib_core.info(`Adding labels [${label.join(',')}] to issue ${issueId}`);
@@ -38868,6 +38872,67 @@ class GitHubDeploymentManager {
         }).then(resp => {
             return resp.status === 201;
         });
+    }
+    async fetchLabelsForIssue(issueId) {
+        lib_core.info(`Fetching labels for issue ${issueId}`);
+        return this.github.rest.issues.listLabelsOnIssue({
+            ...this.repo,
+            issue_number: issueId,
+            per_page: 100,
+            headers: {
+                'X-GitHub-Api-Version': '2022-11-28'
+            }
+        }).then(resp => {
+            return resp.data.map(label => label.name);
+        }).catch(() => {
+            return [];
+        });
+    }
+    async fetchLabelsForRepo(state = 'open', repo = this.repo) {
+        const labelMap = new Map();
+        try {
+            const issues = await this.github.paginate(this.github.rest.issues.listForRepo, {
+                ...repo,
+                state,
+                per_page: 100,
+                headers: {
+                    'X-GitHub-Api-Version': '2022-11-28'
+                }
+            });
+            issues.forEach(issue => {
+                if (issue.labels) {
+                    labelMap.set(issue.number, Array.isArray(issue.labels)
+                        ? issue.labels
+                            .map((label) => {
+                            if (typeof label === 'string')
+                                return label;
+                            return label?.name;
+                        })
+                            .filter((name) => Boolean(name))
+                        : []);
+                }
+            });
+            lib_core.info(`Fetched labels for ${labelMap.size} ${state} issues`);
+            return labelMap;
+        }
+        catch (error) {
+            lib_core.warning(`Failed to fetch issue labels: ${error}`);
+            return new Map();
+        }
+    }
+    async initializeLabelCache(state = 'open', repo = this.repo) {
+        try {
+            this.issueLabelCache = await this.fetchLabelsForRepo(state, repo);
+            lib_core.debug('Label cache contents:');
+            lib_core.debug(JSON.stringify(Object.fromEntries(this.issueLabelCache), null, 2));
+            this.isLabelCacheInitialized = true;
+            lib_core.info(`Initialized label cache with ${this.issueLabelCache.size} ${state} issues`);
+        }
+        catch (error) {
+            lib_core.warning(`Failed to initialize label cache: ${error}`);
+            this.issueLabelCache = new Map();
+            this.isLabelCacheInitialized = false;
+        }
     }
     async extractDemoDeploymentsFromResponse(resp) {
         const manager = this;

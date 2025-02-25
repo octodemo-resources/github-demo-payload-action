@@ -3,7 +3,7 @@ import { Octokit } from '@octokit/rest';
 import { DemoDeployment, GitHubDeploymentData, GitHubDeploymentValidator } from './DemoDeployment.js';
 import { DEMO_DEPLOYMENT_TASK, DEMO_STATES } from './constants.js';
 import { DemoPayload } from './demo-payload/DemoPayload.js';
-import { DeploymentState, DeploymentStatus, Repository } from './types.js';
+import { DeploymentState, DeploymentStatus, GitHubLabel, IssueState, Repository } from './types.js';
 
 export class GitHubDeploymentManager {
 
@@ -13,10 +13,16 @@ export class GitHubDeploymentManager {
 
   private readonly ref: string;
 
+  private issueLabelCache: Map<number, string[]>;
+
+  private isLabelCacheInitialized: boolean;
+
   constructor(repo: Repository, github: Octokit, ref?: string) {
     this.repo = repo;
     this.github = github;
     this.ref = ref || 'main';
+    this.issueLabelCache = new Map();
+    this.isLabelCacheInitialized = false;
   }
 
   getDemoDeploymentForUUID(uuid: string): Promise<DemoDeployment | undefined> {
@@ -220,20 +226,23 @@ export class GitHubDeploymentManager {
       });
   }
 
-  getIssueLabels(issueId: number): Promise<string[]> {
-    core.info(`Listing labels for issue ${issueId}`);
-    return this.github.rest.issues.listLabelsOnIssue({
-      ...this.repo,
-      issue_number: issueId,
-      per_page: 100,
-      headers: {
-        'X-GitHub-Api-Version': '2022-11-28'
-      }
-    }).then(resp => {
-      return resp.data.map(label => label.name);
-    }).catch(() => {
-      return [];
-    })
+  async getIssueLabels(issueId: number, useCache: boolean = true): Promise<string[]> {
+    if (!useCache) {
+      return this.fetchLabelsForIssue(issueId);
+    }
+
+    if (!this.isLabelCacheInitialized) {
+      await this.initializeLabelCache();
+    }
+
+    const cachedLabels: string[] | undefined = this.issueLabelCache?.get(issueId);
+    if (cachedLabels !== undefined) {
+      core.debug(`Cache hit for issue ${issueId}`);
+      return cachedLabels;
+    }
+
+    core.debug(`Cache miss for issue ${issueId}`);
+    return this.fetchLabelsForIssue(issueId);
   }
 
   addIssueLabels(issueId: number, ...label: string[]): Promise<boolean> {
@@ -298,6 +307,81 @@ export class GitHubDeploymentManager {
     }).then(resp => {
       return resp.status === 201;
     });
+  }
+
+  async fetchLabelsForIssue(issueId: number): Promise<string[]> {
+    core.info(`Fetching labels for issue ${issueId}`);
+    return this.github.rest.issues.listLabelsOnIssue({
+      ...this.repo,
+      issue_number: issueId,
+      per_page: 100,
+      headers: {
+        'X-GitHub-Api-Version': '2022-11-28'
+      }
+    }).then(resp => {
+      return resp.data.map(label => label.name);
+    }).catch(() => {
+      return [];
+    })
+  }
+
+  async fetchLabelsForRepo(
+    state: IssueState = 'open',
+    repo: Repository = this.repo
+  ): Promise<Map<number, string[]>> {
+    const labelMap = new Map<number, string[]>();
+
+    try {
+      const issues = await this.github.paginate(this.github.rest.issues.listForRepo, {
+        ...repo,
+        state,
+        per_page: 100,
+        headers: {
+          'X-GitHub-Api-Version': '2022-11-28'
+        }
+      });
+
+      issues.forEach(issue => {
+        if (issue.labels) {
+          labelMap.set(
+            issue.number,
+            Array.isArray(issue.labels)
+              ? issue.labels
+                  .map((label: GitHubLabel) => {
+                    if (typeof label === 'string') return label;
+                    return label?.name;
+                  })
+                  .filter((name): name is string => Boolean(name))
+              : []
+          );
+        }
+      });
+
+      core.info(`Fetched labels for ${labelMap.size} ${state} issues`);
+      return labelMap;
+    } catch (error) {
+      core.warning(`Failed to fetch issue labels: ${error}`);
+      return new Map<number, string[]>();
+    }
+  }
+
+  private async initializeLabelCache(
+    state: IssueState = 'open',
+    repo: Repository = this.repo
+  ): Promise<void> {
+    try {
+      this.issueLabelCache = await this.fetchLabelsForRepo(state, repo);
+
+      core.debug('Label cache contents:');
+      core.debug(JSON.stringify(Object.fromEntries(this.issueLabelCache), null, 2));
+
+      this.isLabelCacheInitialized = true;
+      core.info(`Initialized label cache with ${this.issueLabelCache.size} ${state} issues`);
+    } catch (error) {
+      core.warning(`Failed to initialize label cache: ${error}`);
+      this.issueLabelCache = new Map();
+      this.isLabelCacheInitialized = false;
+    }
   }
 
   private async extractDemoDeploymentsFromResponse(resp: any[]): Promise<DemoDeployment[] | undefined> {
